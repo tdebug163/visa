@@ -32,6 +32,8 @@ command_usage = {}
 
 mes = types.InlineKeyboardMarkup()
 mes.add(types.InlineKeyboardButton(text="Start Checking", callback_data="start"))
+# في أعلى ملف visa.py، بعد تعريف bot
+LANGUAGE = "ar"  # "ar" للعربية، "en" للإنجليزية
 
 @bot.message_handler(commands=["start"])
 def handle_start(message):
@@ -43,17 +45,131 @@ def handle_start(message):
                           text=f"Hi {name}, Welcome To Bassl Checker (Otp and Passed)",
                           reply_markup=mes)
 
+
+
 @bot.callback_query_handler(func=lambda call: call.data == 'start')
 def handle_start_button(call):
     name = call.from_user.first_name
+    
+    # رسائل الترحيب باللغتين
+    if LANGUAGE == "ar":
+        welcome_msg = f"🎉 مرحباً بك في بوت فيزا المطور السريع! 🚀"
+        intro_msg = "أقوى بوت لتوليد وفحص البطاقات الإئتمانية متعدد الخصائص."
+        features_msg = """
+🔥 **المميزات الرئيسية:**
+• 🎯 توليد فيزات ذكية وخوارزمية Luhn
+• 🔍 فحص متقدم (Stripe, Braintree, PayPal, Shopify)
+• 📊 إحصائيات دقيقة ومفصلة
+• 🌐 دعم عربي كامل
+• ⚡ سرعة فائقة في الفحص والتوليد
+        """
+        commands_title = "📋 **قائمة الأوامر:**"
+        generator_title = "🎲 **أوامر التوليد:**"
+        checker_title = "🔍 **أوامر الفحص:**"
+        note_msg = "💡 **ملاحظة:** يمكنك استخدام الأوامر بالنقطة (.) أو الشرطة (/) بدون فرق."
+    else:
+        welcome_msg = f"🎉 Welcome to the Fast Visa Developer Bot! 🚀"
+        intro_msg = "The most powerful bot for generating and checking credit cards with multiple features."
+        features_msg = """
+🔥 **Main Features:**
+• 🎯 Smart Visa generation with Luhn algorithm
+• 🔍 Advanced checking (Stripe, Braintree, PayPal, Shopify)
+• 📊 Detailed and accurate statistics
+• 🌐 Full Arabic support
+• ⚡ High speed in checking and generation
+        """
+        commands_title = "📋 **Commands List:**"
+        generator_title = "🎲 **Generation Commands:**"
+        checker_title = "🔍 **Checking Commands:**"
+        note_msg = "💡 **Note:** You can use commands with dot (.) or slash (/) without difference."
 
-    bot.send_message(call.message.chat.id, 
-        ' - مرحباً بك في بوت فحص Otp And Passed ✅\n\n\nللفحص اليدوي(OTP) [/otp] و للكومبو فقط ارسل الملف.\n\nللفحص اليدوي(Passed) [/vbv] و للكومبو فقط ارسل الملف.\n\nاختر نوع الفحص وسيبدأ البوت بأعطائك البطاقات المفحوصة يوزر المطور @iazuh)')
+    # قائمة الأوامر باللغتين
+    if LANGUAGE == "ar":
+        generator_commands = """
+• <code>/gtp</code> [BIN] [limit] - توليد فيزات عشوائية
+• <code>/gtp</code> [BIN|MM|YY|CVC] [limit] - توليد فيزات محددة
+• <code>/gtp</code> [limit] [range] - توليد كميات كبيرة
+        """
+        checker_commands = """
+• <code>/str</code> - فحص Stripe Auth 1
+• <code>/str2</code> - فحص Stripe Auth 2
+• <code>/br2</code> - فحص Braintree Auth 1
+• <code>/br3</code> - فحص Braintree Auth 2
+• <code>/pypl</code> - فحص PayPal Charge 0.01$ • <code>/sho</code> - فحص Shopify GraphQL 0.5$ • <code>/vbv</code> - فحص VBV Passed
+• <code>/otp</code> - فحص OTP
+        """
+        usage_msg = """
+📝 **طرق الاستخدام:**
+• أرسل ملف txt لفحصه بالكامل
+• أو استخدم الأوامر اليدوية للفحص الفردي
+        """
+        footer_msg = f"""
+━━━━━━━━━━━━━━━━━━
+👨‍💻 المطور: <a href="https://t.me/iazuh">iazuh</a>
+🌐 القناة: <a href="https://t.me/your_channel">قناتك هنا</a>
+━━━━━━━━━━━━━━━━━━
+        """
+    else:
+        generator_commands = """
+• <code>/gtp</code> [BIN] [limit] - Generate random Visas
+• <code>/gtp</code> [BIN|MM|YY|CVC] [limit] - Generate specific Visas
+• <code>/gtp</code> [limit] [range] - Generate large quantities
+        """
+        checker_commands = """
+• <code>/str</code> - Stripe Auth 1 check
+• <code>/str2</code> - Stripe Auth 2 check
+• <code>/br2</code> - Braintree Auth 1 check
+• <code>/br3</code> - Braintree Auth 2 check
+• <code>/pypl</code> - PayPal Charge 0.01$ check
+• <code>/sho</code> - Shopify GraphQL 0.5$ (refund) check
+• <code>/vbv</code> - VBV Passed check
+• <code>/otp</code> - OTP check
+        """
+        usage_msg = """
+📝 **Usage Methods:**
+• Send a txt file to check it completely
+• Or use manual commands for individual checking
+        """
+        footer_msg = f"""
+━━━━━━━━━━━━━━━━━━
+👨‍💻 Developer: <a href="https://t.me/iazuh">iazuh</a>
+🌐 Channel: <a href="https://t.me/your_channel">Your Channel Here</a>
+━━━━━━━━━━━━━━━━━━
+        """
 
-    bot.edit_message_text(chat_id=call.message.chat.id,
-                          message_id=call.message.message_id,
-                          text=f"Hi {name}, Welcome To Saoud Checker (Brantree LookUp)",
-                          reply_markup=mes)
+    # تجميع الرسالة الكاملة
+    full_message = f"""
+{welcome_msg}
+
+{intro_msg}
+
+{features_msg}
+
+{commands_title}
+
+{generator_title}
+{generator_commands}
+
+{checker_title}
+{checker_commands}
+
+{usage_msg}
+
+{note_msg}
+
+{footer_msg}
+    """
+
+    # إرسال الرسالة المحدثة
+    bot.send_message(call.message.chat.id, full_message, parse_mode="HTML")
+    
+    # تحديث رسالة الزر الأصلية
+    bot.edit_message_text(
+        chat_id=call.message.chat.id,
+        message_id=call.message.message_id,
+        text=f"Hi {name}, Welcome To Saoud Checker (Brantree LookUp)",
+        reply_markup=mes
+    )
 
 def UniversalStripeChecker(ccx):
     ccx = ccx.strip()
