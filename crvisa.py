@@ -5,7 +5,7 @@ from datetime import datetime, timedelta
 from faker import Faker
 from telebot import types
 
-# استيراد البوت من ملف visa.py للوصول إليه
+# استيراد البوت للوصول إليه
 try:
     from visa import bot
 except ImportError:
@@ -15,7 +15,10 @@ except ImportError:
 # تهيئة Faker
 fake = Faker()
 
-# --- وظائف مساعدة ذكية ---
+# لتخزين طلبات التوليد المعلقة
+pending_generations = {}
+
+# --- خوارزميات التوليد الذكية ---
 
 def is_luhn_valid(card_number: str) -> bool:
     """التحقق من صحة رقم البطاقة باستخدام خوارزمية Luhn."""
@@ -30,14 +33,14 @@ def is_luhn_valid(card_number: str) -> bool:
 
 def generate_luhn_valid_number(prefix: str, length: int) -> str:
     """توليد رقم بطاقة صحيح باستخدام خوارزمية Luhn."""
-    # التأكد من أن البادئة لا تتجاوز الطول المطلوب
     if len(prefix) >= length:
         return None
-
+        
     number = prefix
     while len(number) < length - 1:
-        number += str(random.randint(0, 9))
-
+        # تجنب الأنماط المتكررة
+        number += str(random.randint(1, 9)) # تبدأ من 1 لتجنب الأصفار المتكررة في البداية
+        
     # حساب وتوليد رقم التحقق
     digits = [int(d) for d in number]
     odd_sum = sum(digits[-1::-2])
@@ -45,251 +48,269 @@ def generate_luhn_valid_number(prefix: str, length: int) -> str:
     total = odd_sum + even_sum
     check_digit = (10 - (total % 10)) % 10
     number += str(check_digit)
+    
+    # فحص أخير
+    if is_luhn_valid(number):
+        return number
+    else:
+        # في حالة نادرة للغاية، أعد المحاولة
+        return generate_luhn_valid_number(prefix, length)
 
-    return number
-
-def smart_generate_expiry_date(range_str=None):
+def smart_generate_expiry_date():
     """
     توليد تاريخ انتهاء ذكي وواقعي.
-    - إذا تم تحديد نطاق (مثل 2025-2028)، سيتم الاختيار منه.
-    - إذا لم يتم تحديد نطاق، سيتم استخدام توزيع مرجح للسنوات القادمة.
+    معظم البطاقات تنتهي خلال 2-3 سنوات القادمة.
     """
     current_year = datetime.now().year % 100
-
-    if range_str and '-' in range_str:
-        try:
-            start_yy, end_yy = map(int, range_str.split('-'))
-            start_yy, end_yy = start_yy % 100, end_yy % 100
-            year = random.randint(start_yy, end_yy)
-        except (ValueError, TypeError):
-            year = (current_year + random.randint(1, 5)) % 100
-    else:
-        # توزيع مرجح: معظم البطاقات تنتهي خلال 2-4 سنوات
-        years = list(range((current_year + 1) % 100, (current_year + 6) % 100))
-        weights = [5, 4, 3, 2, 1] # أوزان للسنوات (الأقرب للأعلى وزن)
-        year = random.choices(years, weights=weights)[0]
-
+    
+    # توزيع مرجح للسنوات (أقرب سنة لها فرصة أعلى)
+    years = list(range((current_year + 1) % 100, (current_year + 6) % 100))
+    weights = [35, 30, 20, 10, 5] # أوزان للسنوات
+    year = random.choices(years, weights=weights)[0]
+        
     month = f"{random.randint(1, 12):02d}"
     yy = f"{year:02d}"
     return month, yy
 
-def parse_smart_command(text: str) -> dict:
+def smart_generate_cvc(card_prefix: str) -> str:
+    """توليد CVC ذكي."""
+    if card_prefix.startswith('34') or card_prefix.startswith('37'): # American Express
+        return f"{random.randint(1000, 9999)}"
+    else:
+        return f"{random.randint(100, 999)}"
+
+# --- وظائف معالجة الأوامر والتفاعل ---
+
+def parse_generation_input(input_str: str) -> dict:
     """
-    تحليل الأمر المرن لاستخلاص جميع الخيارات.
+    تحليل مدخل الأمر لاستخلاص جميع البيانات الممكنة.
     يدعم صيغ مثل:
-    /gtp 537308334 1000
-    /gtp 537308334 1000 range 2025-2028
-    /gtp 537308334 1000 output file
-    /gtp 537308334 1000 range 2025-2028 output file
+    - 37246235 (BIN فقط)
+    - 472747733 10 2025 123 (BIN، شهر، سنة، CVC)
+    - 472747733|10|2025|123 (BIN، شهر، سنة، CVC)
     """
-    parts = text.split()
-    if len(parts) < 3 or parts[0].lower() != '/gtp':
+    # البحث عن جميع الأرقام في النص
+    numbers = re.findall(r'\d+', input_str)
+    if not numbers:
         return None
 
-    options = {
-        'bin': parts[1],
-        'limit': 0,
-        'mode': 'random',
-        'range': None,
-        'output': None
-    }
+    data = {'bin': '', 'mm': '', 'yy': '', 'cvc': ''}
+    
+    # إذا كان الرقم الأول هو 6 أرقام، فهو BIN
+    if len(numbers[0]) >= 6:
+        data['bin'] = numbers[0][:6]
+        
+        # إذا كانت هناك أرقام أخرى، حاول استخلاص التاريخ و CVC
+        if len(numbers) > 1:
+            # افتراض: الرقم التالي هو الشهر
+            if len(numbers[1]) >= 2:
+                data['mm'] = numbers[1][:2]
+            
+            # البحث عن سنة (رقم مكون من 4 أو رقمين)
+            potential_year = None
+            for num in numbers[2:]:
+                if 22 <= len(num) <= 24: # سنة من 4 أرقام
+                    potential_year = num[-2:]
+                elif 22 <= int(num) <= 99 if num.isdigit() else 0: # سنة من رقمين
+                    potential_year = num[-2:]
+            
+            if potential_year:
+                data['yy'] = potential_year
 
-    try:
-        options['limit'] = int(parts[2])
-    except (ValueError, IndexError):
-        return None
+            # البحث عن CVC (آخر رقم مكون من 3 أو 4 أرقام)
+            potential_cvc = None
+            for num in reversed(numbers):
+                if 3 <= len(num) <= 4:
+                    potential_cvc = num
+                    break
+            
+            if potential_cvc:
+                data['cvc'] = potential_cvc
 
-    # البحث عن الخيارات الإضافية
-    for i, part in enumerate(parts[3:]):
-        if part.lower() == 'range' and i + 1 < len(parts):
-            options['range'] = parts[i+1]
-        elif part.lower() == 'output' and i + 1 < len(parts):
-            options['output'] = parts[i+1]
+    return data
 
-    return options
+def handle_generate_command(message):
+    """معالجة أمر التوليد الأولي."""
+    if not bot:
+        return
 
-def generate_smart_cards(options: dict) -> list:
+    # التعامل مع مختلف صيغ الأمر
+    command_text = message.text.strip().lower()
+    if not (command_text.startswith('/gtp') or command_text.startswith('gtp') or command_text.startswith('gtp,')):
+        return
+
+    parts = command_text.split()
+    if len(parts) < 2:
+        bot.reply_to(message, "❌ خطأ في صيغة الأمر.\n\n📝 **كيفية الاستخدام:**\n`/gtp 37246235` (للتوليد العشوائي)\n`/gtp 472747733 10 2025 123` (للتوليد المحدد)")
+        return
+
+    input_data = ' '.join(parts[1:])
+    parsed_data = parse_generation_input(input_data)
+    
+    if not parsed_data or not parsed_data['bin']:
+        bot.reply_to(message, "❌ لم أتمكن من فهم البيانات المدخلة. تأكد من صحة BIN أو البيانات.")
+        return
+
+    user_id = message.from_user.id
+    # تخزين البيانات المفحصة للخطوة التالية
+    pending_generations[user_id] = parsed_data
+    
+    # إنشاء لوحة مفاتيح تفاعلية
+    markup = types.InlineKeyboardMarkup(row_width=3)
+    
+    quantities = [
+        ("5", "gen_5"), ("10", "gen_10"), ("50", "gen_50"),
+        ("100", "gen_100"), ("500", "gen_500"), ("1000", "gen_1000"),
+        ("5000", "gen_5000"), ("10000", "gen_10000"), ("100000", "gen_100000"),
+        ("1000000", "gen_1000000")
+    ]
+    
+    for text, callback_data in quantities:
+        markup.add(types.InlineKeyboardButton(text=text, callback_data=callback_data))
+        
+    # زر للمزيد من الخيارات
+    markup.add(types.InlineKeyboardButton("... خيارات المزيد", callback_data="gen_info"))
+
+    # عرض معلومات التوليد
+    info_text = f"✅ تم تحليل البيانات بنجاح!\n\n"
+    info_text += f"🔹 **BIN:** `{parsed_data['bin'][:6]}...`\n"
+    if parsed_data['mm']:
+        info_text += f"🔹 **الشهر:** `{parsed_data['mm']}`\n"
+    if parsed_data['yy']:
+        info_text += f"🔹 **السنة:** `{parsed_data['yy']}`\n"
+    if parsed_data['cvc']:
+        info_text += f"🔹 **CVC:** `{parsed_data['cvc']}`\n"
+        
+    info_text += "\n🔢 **اختر الكمية المراد توليدها:**"
+
+    bot.reply_to(message, info_text, reply_markup=markup)
+
+def generate_cards_from_data(data: dict, limit: int) -> list:
     """
-    توليد البطاقات بناءً على الخيارات الذكية.
+    توليد البطاقات بناءً على البيانات المفحصة والحد المطلوب.
     """
     cards = []
-    bin_prefix = options['bin']
-    limit = options['limit']
-
-    # التأكد من أن البادئة (BIN) هي 6 أو 8 أرقام على الأقل
+    bin_prefix = data['bin']
+    
+    # التأكد من أن البادئة (BIN) هي 6 أرقام على الأقل
     if len(bin_prefix) < 6:
         bin_prefix = bin_prefix.ljust(6, '0')[:6]
 
-    # تحديد طول البطاقة بناءً على البادئة (عادة 16 رقم)
-    card_length = 16
-    if len(bin_prefix) > 6:
-        card_length = 16 # يمكن تعديله لاحقًا لبطاقات أطول
-
-    print(f"🧠 Starting smart generation of {limit} cards with BIN: {bin_prefix[:6]}...")
+    print(f"🧠 بدء التوليد الذكي لـ {limit} بطاقة بـ BIN: {bin_prefix[:6]}...")
 
     for i in range(limit):
-        # توليد التاريخ الذكي
-        mm, yy = smart_generate_expiry_date(options.get('range'))
-
-        # توليد رقم البطاقة الصحيح
-        card_number = generate_luhn_valid_number(bin_prefix, card_length)
-        if not card_number:
-            continue # تخطي في حالة فشل التوليد (نادر جدًا)
-
-        # توليد CVC ذكي
-        if card_number.startswith('34') or card_number.startswith('37'): # American Express
-            cvc = f"{random.randint(1000, 9999)}"
+        # توليد التاريخ والـ CVC إذا لم يتم تحديدهما
+        if not data['mm'] or not data['yy']:
+            mm, yy = smart_generate_expiry_date()
         else:
-            cvc = f"{random.randint(0, 999):03d}"
+            mm = data['mm']
+            yy = data['yy'][-2:]
+            
+        if not data['cvc']:
+            cvc = smart_generate_cvc(bin_prefix)
+        else:
+            cvc = data['cvc']
+            
+        # توليد رقم البطاقة الصحيح
+        card_number = generate_luhn_valid_number(bin_prefix, 16)
+        if not card_number:
+            continue # تخطي في حالة فشل نادر للتوليد
 
         cards.append(f"{card_number}|{mm}|{yy}|{cvc}")
-
+        
+        # عرض التقدم كل 10000 بطاقة
         if (i + 1) % 10000 == 0:
-            print(f"🧠 Generated {i + 1}/{limit} cards...")
+            print(f"🧠 تم توليد {i + 1}/{limit} بطاقة...")
 
-    print(f"✅ Smart generation completed. Total valid cards: {len(cards)}")
+    print(f"✅ اكتمل التوليد الذكي. العدد الإجمالي: {len(cards)} بطاقة صالحة.")
     return cards
 
-# --- معالجات التيليجرام ---
+# --- معالجات الأزرار التفاعلية ---
 
-def send_with_choice(chat_id, cards: list, base_filename: str):
-    """
-    إرسال البطاقات مع خيار التحميل أو الإرسال في الدردشة.
-    """
-    count = len(cards)
-    message_text = f"✅ تم توليد {count:,} فيزة بنجاح!\n\nاختر كيفية استلامها:"
-
-    # إنشاء لوحة مفاتيح تفاعلية
-    markup = types.InlineKeyboardMarkup(row_width=1)
-    download_btn = types.InlineKeyboardButton("📁 تحميل كملف .txt", callback_data=f'download|{base_filename}')
-    send_btn = types.InlineKeyboardButton("📤 إرسال في الدردشة", callback_data=f'send|{base_filename}')
-    markup.add(download_btn, send_btn)
-
-    bot.send_message(chat_id, message_text, reply_markup=markup)
-
-def handle_download_callback(call):
-    """معالجة طلب التحميل."""
-    _, filename = call.data.split('|', 1)
-    user_id = call.from_user.id
-
-    try:
-        with open(filename, 'r', encoding='utf-8') as f:
-            cards = f.read()
-
-        bot.send_document(call.message.chat.id, cards.encode('utf-8'), visible_file_name=f"{filename.split('_')[-1]}.txt")
-        bot.answer_callback_query(call.id, "✅ تم إرسال الملف بنجاح!")
-    except FileNotFoundError:
-        bot.answer_callback_query(call.id, "❌ انتهت صلاحية الملف. الرجاء إعادة التوليد.", show_alert=True)
-    except Exception as e:
-        bot.answer_callback_query(call.id, f"❌ حدث خطأ: {e}", show_alert=True)
-
-def handle_send_callback(call):
-    """معالجة طلب الإرسال في الدردشة."""
-    _, filename = call.data.split('|', 1)
-    user_id = call.from_user.id
-
-    try:
-        with open(filename, 'r', encoding='utf-8') as f:
-            cards = f.read().splitlines()
-
-        # تقسيم الرسالة إذا كانت طويلة جدًا (تيليجرام لديه حد 4096 حرفًا)
-        max_message_length = 4000
-        if len(cards) == 0:
-            bot.answer_callback_query(call.id, "❌ الملف فارغ.", show_alert=True)
-            return
-
-        header = f"📤 قائمة الفيزات المولدة ({len(cards)} بطاقة):\n\n"
-        current_message = header
-
-        bot.answer_callback_query(call.id, "🚀 بدء الإرسال في الدردشة...")
-
-        for i, card in enumerate(cards):
-            card_line = f"{card}\n"
-            if len(current_message) + len(card_line) > max_message_length:
-                bot.send_message(call.message.chat.id, current_message)
-                time.sleep(1) # تأخير قصير لتجنب الحظر
-                current_message = ""
-            current_message += card_line
-
-        if current_message != header:
-            bot.send_message(call.message.chat.id, current_message)
-
-    except FileNotFoundError:
-        bot.answer_callback_query(call.id, "❌ انتهت صلاحية الملف. الرجاء إعادة التوليد.", show_alert=True)
-    except Exception as e:
-        bot.answer_callback_query(call.id, f"❌ حدث خطأ أثناء الإرسال: {e}", show_alert=True)
-
-
-# --- المعالج الرئيسي للأمر ---
-
-def handle_generate_command(message):
-    """معالجة أمر التوليد الرئيسي."""
+@bot.callback_query_handler(func=lambda call: call.data.startswith('gen_'))
+def handle_generation_quantity(call):
+    """معالجة اختيار كمية التوليد."""
     if not bot:
-        message.reply("❌ لم يتمكن العثور على البوت. تأكد من أن 'visa.py' و 'crvisa.py' في نفس المجلد.")
+        return
+        
+    user_id = call.from_user.id
+    try:
+        _, quantity_str = call.data.split('_')
+        limit = int(quantity_str)
+    except (ValueError, IndexError):
+        bot.answer_callback_query(call.id, "❌ خيار غير صالح.", show_alert=True)
         return
 
-    options = parse_smart_command(message.text)
-    if not options:
-        help_text = """
-📝 **كيفية استخدام الأمر الذكي:**
-
-`/gtp [BIN] [العدد] (خيارات)`
-
-**الخيارات الإضافية:**
-- `range [YYYY-YYYY]` : لتحديد نطاق سنوات الانتهاء.
-  *مثال:* `range 2025-2028`
-- `output [file/chat]` : لتحديد طريقة الإرسال مباشرةً.
-  *مثال:* `output file`
-
-**أمثلة عملية:**
-`/gtp 537308334 1000`
-`/gtp 537308334 5000 range 2025-2028 output file`
-`/gtp 537308334 10000 range 2025-2030`
-        """
-        bot.reply_to(message, help_text)
+    # استرجاع البيانات المخزنة
+    data = pending_generations.get(user_id)
+    if not data:
+        bot.answer_callback_query(call.id, "❌ انتهت صلاحية الجلسة. يرجى إعادة الأمر.", show_alert=True)
         return
 
-    limit = options['limit']
-    if limit > 1000000:
-        bot.reply_to(message, "⚠️ الحد الأقصى للتوليد هو 1,000,000 بطاقة.")
-        return
-
-    # حفظ البطاقات في ملف مؤقت
-    user_id = message.from_user.id
-    filename = f"generated_{user_id}_{int(time.time())}.txt"
+    bot.answer_callback_query(call.id, "🚀 جاري التوليد...")
 
     # توليد البطاقات
-    generated_cards = generate_smart_cards(options)
-
+    generated_cards = generate_cards_from_data(data, limit)
+    
     if not generated_cards:
-        bot.reply_to(message, "❌ فشل توليد أي بطاقات صالحة. تحقق من المدخلات.")
+        bot.answer_callback_query(call.id, "❌ فشل توليد أي بطاقات صالحة.", show_alert=True)
         return
 
-    # حفظ في الملف
-    with open(filename, 'w', encoding='utf-8') as f:
-        f.write('\n'.join(generated_cards))
+    # حفظ البطاقات في ملف
+    filename = f"generated_{user_id}_{int(time.time())}.txt"
+    try:
+        with open(filename, 'w', encoding='utf-8') as f:
+            f.write('\n'.join(generated_cards))
+        
+        # إرسال الملف
+        with open(filename, 'rb') as f:
+            bot.send_document(
+                call.message.chat.id,
+                f,
+                visible_file_name=f"cards_{limit}.txt",
+                caption=f"✅ تم توليد {len(generated_cards):,} بطاقة بنجاح!\n\n🔹 BIN: `{data['bin'][:6]}...`\n🔹 الكمية: `{limit:,}`"
+            )
+    except Exception as e:
+        bot.answer_callback_query(call.id, f"❌ حدث خطأ أثناء حفظ الملف: {e}", show_alert=True)
+        return
+    finally:
+        # تنظيف البيانات المخزنة
+        if user_id in pending_generations:
+            del pending_generations[user_id]
 
-    # إرسال مع الخيارات
-    send_with_choice(message.chat.id, generated_cards, filename)
+@bot.callback_query_handler(func=lambda call: call.data == 'gen_info')
+def handle_generation_info(call):
+    """عرض معلومات إضافية حول التوليد الذكي."""
+    info_text = """
+🧠 **معلومات التوليد الذكي:**
 
-# --- تسجيل معالجات الأزرار التفاعلية ---
+• يتم استخدام خوارزمية Luhn لضمان صحة أرقام البطاقات.
+• تواريخ الانتهاء يتم توليدها بذكاء لتكون واقعية (معظم البطاقات تنتهي خلال 2-3 سنوات).
+• يتم تحديد طول الـ CVC تلقائيًا بناءً على نوع البطاقة (Amex = 4 أرقام).
+• يتم تجنب الأنماط المتكررة في أرقام البطاقات لزيادة الواقعية.
+
+🔧 **الأوامر المدعومة:**
+• `/gtp 37246235` : توليد عشوائي.
+• `/gtp 472747733 10 2025 123` : توليد محدد.
+• `gtp 472747733|10|2025|123` : صيغة أخرى.
+    """
+    bot.answer_callback_query(call.id, info_text, show_alert=True)
+
+# --- تسجيل المعالجات مع البوت ---
 
 def register_handlers():
-    """تسجيل المعالجات مع البوت."""
+    """تسجيل جميع معالجات التوليد مع البوت."""
     if not bot:
+        print("⚠️ Cannot register handlers: 'bot' object not available.")
         return
 
-    @bot.message_handler(commands=['gtp'])
+    # تسجيل معالج الأمر الرئيسي
+    @bot.message_handler(func=lambda message: message.text.lower().startswith('/gtp') or message.text.lower().startswith('gtp') or message.text.lower().startswith('gtp,'))
     def _handle(message):
         handle_generate_command(message)
 
-    @bot.callback_query_handler(func=lambda call: call.data.startswith('download|'))
-    def _handle_download(call):
-        handle_download_callback(call)
-
-    @bot.callback_query_handler(func=lambda call: call.data.startswith('send|'))
-    def _handle_send(call):
-        handle_send_callback(call)
+    # معالجات الأزرار تم تسجيلها بالفعل كـ @bot.callback_query_handler
+    print("✅ تم تسجيل معالجات التوليد التفاعلية بنجاح.")
 
 # تشغيل التسجيل عند استيراد الملف
 if bot:
