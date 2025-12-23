@@ -105,8 +105,8 @@ def handle_start_button(call):
         """
         footer_msg = f"""
 ━━━━━━━━━━━━━━━━━━
-👨‍💻 المطور: <a href="https://t.me/iazuh">iazuh</a>
-🌐 القناة: <a href="https://t.me/your_channel">قناتك هنا</a>
+👨‍💻 العير: <a href="https://t.me/iazuh">iazuh</a>
+🌐 قناه العير: <a href="https://t.me/Nai9No">Nai9No</a>
 ━━━━━━━━━━━━━━━━━━
         """
     else:
