@@ -359,9 +359,9 @@ def pp(ccx, amount="1.10"):
             return "UNKNOWN_ERROR"
 
 # =================================================================
-# --- بايليجرام بوت (يعمل كـ Bot فقط) ---
+# --- بايليجرام بوت (التعديل هنا) ---
 # =================================================================
-app = Client("charge_checker_bot", bot_token=BOT_TOKEN, in_memory=True)
+app = Client("visa_checker_bot", bot_token=BOT_TOKEN)
 
 # دالة مساعدة لتنسيق البطاقة
 def format_card(cc_str):
