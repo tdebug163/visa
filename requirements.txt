@@ -7,3 +7,8 @@ beautifulsoup4
 faker
 user-agent
 PyJWT
+pyrogram
+tgcrypto
+requests
+requests-toolbelt
+urllib3
